@@ -1,0 +1,26 @@
+{
+  "name": "cherubimro/drupal-mfa",
+  "type": "drupal-module",
+  "description": "FIDO2/WebAuthn and TOTP multi-factor authentication for Drupal",
+  "license": "GPL-2.0-or-later",
+  "version": "1.0.0",
+  "keywords": ["drupal", "module", "fido2", "webauthn", "totp", "2fa", "mfa", "security-key", "yubikey"],
+  "homepage": "https://github.com/cherubimro/drupal-mfa",
+  "authors": [
+    {
+      "name": "Alin-Adrian Anton",
+      "email": "alin.anton@upt.ro"
+    }
+  ],
+  "require": {
+    "php": ">=7.4",
+    "lbuchs/webauthn": "^2.2",
+    "spomky-labs/otphp": "^10.0",
+    "chillerlan/php-qrcode": "^5.0"
+  },
+  "autoload": {
+    "classmap": [
+      "src/"
+    ]
+  }
+}

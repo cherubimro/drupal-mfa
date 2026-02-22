@@ -1,0 +1,111 @@
+webauthn.verify:
+  path: '/user/webauthn-verify'
+  defaults:
+    _form: '\Drupal\webauthn\Form\WebAuthnVerifyForm'
+    _title: 'Two-Factor Verification'
+  requirements:
+    _user_is_logged_in: 'TRUE'
+
+webauthn.assert_options:
+  path: '/webauthn/assert-options'
+  defaults:
+    _controller: '\Drupal\webauthn\Controller\WebAuthnController::assertOptions'
+  requirements:
+    _user_is_logged_in: 'TRUE'
+    _csrf_token: 'TRUE'
+
+webauthn.assert_verify:
+  path: '/webauthn/assert-verify'
+  defaults:
+    _controller: '\Drupal\webauthn\Controller\WebAuthnController::assertVerify'
+  requirements:
+    _user_is_logged_in: 'TRUE'
+    _csrf_token: 'TRUE'
+  methods: [POST]
+
+webauthn.register_options:
+  path: '/webauthn/register-options'
+  defaults:
+    _controller: '\Drupal\webauthn\Controller\WebAuthnController::registerOptions'
+  requirements:
+    _permission: 'manage own security keys'
+    _csrf_token: 'TRUE'
+
+webauthn.register_verify:
+  path: '/webauthn/register-verify'
+  defaults:
+    _controller: '\Drupal\webauthn\Controller\WebAuthnController::registerVerify'
+  requirements:
+    _permission: 'manage own security keys'
+    _csrf_token: 'TRUE'
+  methods: [POST]
+
+webauthn.delete:
+  path: '/webauthn/delete'
+  defaults:
+    _controller: '\Drupal\webauthn\Controller\WebAuthnController::deleteCredential'
+  requirements:
+    _permission: 'manage own security keys'
+    _csrf_token: 'TRUE'
+  methods: [POST]
+
+webauthn.toggle:
+  path: '/webauthn/toggle'
+  defaults:
+    _controller: '\Drupal\webauthn\Controller\WebAuthnController::toggle2fa'
+  requirements:
+    _permission: 'manage own security keys'
+    _csrf_token: 'TRUE'
+  methods: [POST]
+
+webauthn.user_settings:
+  path: '/user/{user}/security-keys'
+  defaults:
+    _controller: '\Drupal\webauthn\Controller\WebAuthnUserSettingsController::page'
+    _title_callback: '\Drupal\webauthn\Controller\WebAuthnUserSettingsController::title'
+  requirements:
+    _custom_access: '\Drupal\webauthn\Controller\WebAuthnUserSettingsController::access'
+    user: \d+
+
+webauthn.totp_setup:
+  path: '/webauthn/totp-setup'
+  defaults:
+    _controller: '\Drupal\webauthn\Controller\WebAuthnController::totpSetup'
+  requirements:
+    _permission: 'manage own security keys'
+    _csrf_token: 'TRUE'
+
+webauthn.totp_confirm:
+  path: '/webauthn/totp-confirm'
+  defaults:
+    _controller: '\Drupal\webauthn\Controller\WebAuthnController::totpConfirm'
+  requirements:
+    _permission: 'manage own security keys'
+    _csrf_token: 'TRUE'
+  methods: [POST]
+
+webauthn.totp_remove:
+  path: '/webauthn/totp-remove'
+  defaults:
+    _controller: '\Drupal\webauthn\Controller\WebAuthnController::totpRemove'
+  requirements:
+    _permission: 'manage own security keys'
+    _csrf_token: 'TRUE'
+  methods: [POST]
+
+webauthn.totp_verify:
+  path: '/webauthn/totp-verify'
+  defaults:
+    _controller: '\Drupal\webauthn\Controller\WebAuthnController::totpVerify'
+  requirements:
+    _user_is_logged_in: 'TRUE'
+    _csrf_token: 'TRUE'
+  methods: [POST]
+
+webauthn.admin_settings:
+  path: '/admin/config/people/webauthn'
+  defaults:
+    _form: '\Drupal\webauthn\Form\WebAuthnAdminSettingsForm'
+    _title: 'WebAuthn 2FA Settings'
+  requirements:
+    _permission: 'administer webauthn'

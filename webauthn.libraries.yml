@@ -1,0 +1,12 @@
+webauthn:
+  version: 1.1
+  js:
+    js/webauthn.js: {}
+  css:
+    theme:
+      css/webauthn.css: {}
+  dependencies:
+    - core/jquery
+    - core/once
+    - core/drupal
+    - core/drupalSettings

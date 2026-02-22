@@ -1,0 +1,111 @@
+{#
+/**
+ * @file
+ * Template for the WebAuthn user security keys settings page.
+ *
+ * Available variables:
+ * - credentials: Array of credential objects with id, description, created, last_used, clone_warning.
+ * - tfa_enabled: Boolean whether 2FA is currently enabled for this user.
+ * - has_totp: Boolean whether TOTP (authenticator app) is configured.
+ */
+#}
+<div id="webauthn-settings-wrapper" class="webauthn-settings">
+  <div id="webauthn-settings-message" class="webauthn-message" style="display:none;"></div>
+
+  {# ---- Security Keys Section ---- #}
+  <div class="webauthn-settings__header">
+    <h3>{{ 'Security Keys'|t }}</h3>
+    <button id="webauthn-register-btn" type="button" class="button button--primary">
+      {{ 'Register New Key'|t }}
+    </button>
+  </div>
+
+  {% if credentials %}
+    <table>
+      <thead>
+        <tr>
+          <th>{{ 'Name'|t }}</th>
+          <th>{{ 'Registered'|t }}</th>
+          <th>{{ 'Last Used'|t }}</th>
+          <th>{{ 'Actions'|t }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cred in credentials %}
+          <tr>
+            <td>
+              {{ cred.description }}
+              {% if cred.clone_warning %}
+                <span class="webauthn-settings__clone-warning" title="{{ 'Possible cloned authenticator detected'|t }}">&#9888;</span>
+              {% endif %}
+            </td>
+            <td>{{ cred.created }}</td>
+            <td>{{ cred.last_used }}</td>
+            <td>
+              <button type="button" class="button webauthn-delete-btn" data-credential-id="{{ cred.id }}">
+                {{ 'Delete'|t }}
+              </button>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="webauthn-settings__no-keys">
+      {{ 'No security keys registered yet.'|t }}
+    </p>
+  {% endif %}
+
+  {# ---- Authenticator App Section ---- #}
+  <div class="webauthn-settings__totp-section">
+    <h3>{{ 'Authenticator App'|t }}</h3>
+
+    {% if has_totp %}
+      <div id="webauthn-totp-status" class="webauthn-settings__totp-status">
+        <span class="webauthn-settings__totp-badge webauthn-settings__totp-badge--active">{{ 'Configured'|t }}</span>
+        <p>{{ 'Your authenticator app (Google Authenticator, andOTP, FreeOTP, etc.) is set up and ready to use.'|t }}</p>
+        <button id="webauthn-totp-remove-btn" type="button" class="button button--danger">
+          {{ 'Remove Authenticator App'|t }}
+        </button>
+      </div>
+    {% else %}
+      <div id="webauthn-totp-status" class="webauthn-settings__totp-status">
+        <span class="webauthn-settings__totp-badge">{{ 'Not configured'|t }}</span>
+        <p>{{ 'Use an authenticator app (Google Authenticator, andOTP, FreeOTP, etc.) as a 2FA method.'|t }}</p>
+        <button id="webauthn-totp-setup-btn" type="button" class="button button--primary">
+          {{ 'Set Up Authenticator App'|t }}
+        </button>
+      </div>
+    {% endif %}
+
+    {# TOTP setup area (hidden, shown via JS) #}
+    <div id="webauthn-totp-setup" class="webauthn-settings__totp-setup" style="display:none;">
+      <div id="webauthn-totp-qr" class="webauthn-settings__totp-qr"></div>
+      <div class="webauthn-settings__totp-manual">
+        <p>{{ "Can't scan? Enter this key manually:"|t }}</p>
+        <code id="webauthn-totp-secret"></code>
+      </div>
+      <div class="webauthn-settings__totp-confirm">
+        <label for="webauthn-totp-confirm-code">{{ 'Enter the 6-digit code from your app to confirm:'|t }}</label>
+        <div class="webauthn-settings__totp-confirm-row">
+          <input type="text" id="webauthn-totp-confirm-code" maxlength="6" pattern="[0-9]{6}"
+                 inputmode="numeric" autocomplete="one-time-code" placeholder="000000">
+          <button id="webauthn-totp-confirm-btn" type="button" class="button button--primary">
+            {{ 'Confirm'|t }}
+          </button>
+          <button id="webauthn-totp-cancel-btn" type="button" class="button">
+            {{ 'Cancel'|t }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ---- 2FA Toggle ---- #}
+  <div class="webauthn-settings__toggle">
+    <label>
+      <input type="checkbox" id="webauthn-toggle" {{ tfa_enabled ? 'checked' : '' }}>
+      {{ 'Enable two-factor authentication'|t }}
+    </label>
+  </div>
+</div>

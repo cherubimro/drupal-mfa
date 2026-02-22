@@ -1,0 +1,78 @@
+{#
+/**
+ * @file
+ * Template for the WebAuthn/TOTP 2FA/MFA verification page.
+ */
+#}
+<div id="webauthn-verify-wrapper" class="webauthn-verify">
+  <div class="webauthn-verify__icon">&#128272;</div>
+
+  {# MFA step progress (shown in "all" mode when both methods configured) #}
+  <div id="webauthn-mfa-steps" class="webauthn-verify__steps" style="display:none;">
+    <div id="webauthn-step-webauthn" class="webauthn-verify__step">
+      <span class="webauthn-verify__step-indicator">1</span>
+      <span class="webauthn-verify__step-label">{{ 'Security Key'|t }}</span>
+    </div>
+    <div class="webauthn-verify__step-divider"></div>
+    <div id="webauthn-step-totp" class="webauthn-verify__step">
+      <span class="webauthn-verify__step-indicator">2</span>
+      <span class="webauthn-verify__step-label">{{ 'Authenticator App'|t }}</span>
+    </div>
+  </div>
+
+  <div id="webauthn-message" class="webauthn-verify__message">
+    {{ 'Preparing verification...'|t }}
+  </div>
+
+  <div id="webauthn-error" class="webauthn-verify__error"></div>
+
+  {# WebAuthn section (security key) #}
+  <div id="webauthn-key-section" class="webauthn-verify__section" style="display:none;">
+    <div class="webauthn-verify__retry">
+      <button id="webauthn-retry-btn" type="button" class="button button--primary">
+        {{ 'Try Again'|t }}
+      </button>
+    </div>
+  </div>
+
+  {# TOTP section (authenticator app code) #}
+  <div id="webauthn-totp-section" class="webauthn-verify__section" style="display:none;">
+    <div class="webauthn-verify__totp-form">
+      <label for="webauthn-totp-code">{{ 'Enter 6-digit code from your authenticator app:'|t }}</label>
+      <div class="webauthn-verify__totp-input-row">
+        <input type="text" id="webauthn-totp-code" maxlength="6" pattern="[0-9]{6}"
+               inputmode="numeric" autocomplete="one-time-code" placeholder="000000">
+        <button id="webauthn-totp-submit" type="button" class="button button--primary">
+          {{ 'Verify'|t }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {# Method switcher (only in "any" mode when both methods available) #}
+  <div id="webauthn-method-switch" class="webauthn-verify__switch" style="display:none;">
+    <a href="#" id="webauthn-switch-to-totp">{{ 'Use authenticator app instead'|t }}</a>
+    <a href="#" id="webauthn-switch-to-key" style="display:none;">{{ 'Use security key instead'|t }}</a>
+  </div>
+
+  <div class="webauthn-verify__login-info">
+    {% if login_ip %}
+      <div class="webauthn-verify__current-ip">
+        {{ 'Current login from: @ip'|t({'@ip': login_ip}) }}
+      </div>
+    {% endif %}
+    {% if prev_login_ip and prev_login_time %}
+      <div class="webauthn-verify__prev-login">
+        {{ 'Last login: @time from @ip'|t({'@time': prev_login_time, '@ip': prev_login_ip}) }}
+      </div>
+    {% elseif prev_login_time %}
+      <div class="webauthn-verify__prev-login">
+        {{ 'Last login: @time'|t({'@time': prev_login_time}) }}
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="webauthn-verify__logout">
+    <a href="{{ path('user.logout') }}">{{ 'Cancel and log out'|t }}</a>
+  </div>
+</div>

@@ -1,0 +1,8 @@
+administer webauthn:
+  title: 'Administer WebAuthn settings'
+  description: 'Configure global WebAuthn 2FA settings.'
+  restrict access: true
+
+manage own security keys:
+  title: 'Manage own security keys'
+  description: 'Register and delete FIDO2/WebAuthn security keys and toggle 2FA.'

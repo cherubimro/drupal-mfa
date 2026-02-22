@@ -1,0 +1,133 @@
+<?php
+
+/**
+ * @file
+ * Install, update, and uninstall functions for the WebAuthn module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function webauthn_schema() {
+  $schema['webauthn_credentials'] = [
+    'description' => 'Stores WebAuthn/FIDO2 credentials for users.',
+    'fields' => [
+      'id' => [
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Primary key.',
+      ],
+      'uid' => [
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Drupal user ID.',
+      ],
+      'description' => [
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => FALSE,
+        'description' => 'User-given key name.',
+      ],
+      'credential_id' => [
+        'type' => 'blob',
+        'size' => 'big',
+        'not null' => TRUE,
+        'description' => 'Raw binary credential ID.',
+      ],
+      'public_key' => [
+        'type' => 'blob',
+        'size' => 'big',
+        'not null' => TRUE,
+        'description' => 'COSE-encoded public key.',
+      ],
+      'aaguid' => [
+        'type' => 'varchar',
+        'length' => 36,
+        'not null' => FALSE,
+        'default' => '',
+        'description' => 'Authenticator model UUID.',
+      ],
+      'attestation_type' => [
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => FALSE,
+        'default' => 'none',
+        'description' => 'Attestation format: packed, fido-u2f, none.',
+      ],
+      'attachment' => [
+        'type' => 'varchar',
+        'length' => 16,
+        'not null' => FALSE,
+        'default' => '',
+        'description' => 'platform or cross-platform.',
+      ],
+      'transports' => [
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => FALSE,
+        'default' => '',
+        'description' => 'Comma-separated transport hints: usb,nfc,ble,internal.',
+      ],
+      'sign_count' => [
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Signature counter for clone detection.',
+      ],
+      'clone_warning' => [
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Flagged if counter anomaly detected.',
+      ],
+      'user_verified' => [
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Whether biometric/PIN was used.',
+      ],
+      'backup_eligible' => [
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Whether this is a synced passkey.',
+      ],
+      'created' => [
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Unix timestamp when created.',
+      ],
+      'last_used' => [
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+        'description' => 'Unix timestamp when last used.',
+      ],
+    ],
+    'primary key' => ['id'],
+    'indexes' => [
+      'uid' => ['uid'],
+      'uid_credential' => ['uid', ['credential_id', 255]],
+    ],
+  ];
+
+  return $schema;
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function webauthn_uninstall() {
+  // Clean up user data entries.
+  \Drupal::database()->delete('users_data')
+    ->condition('module', 'webauthn')
+    ->execute();
+}

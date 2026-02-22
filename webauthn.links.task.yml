@@ -1,0 +1,4 @@
+webauthn.user_settings:
+  title: 'Security Keys'
+  route_name: webauthn.user_settings
+  base_route: entity.user.canonical

@@ -1,0 +1,8 @@
+policy: 'optional'
+verification_mode: 'any'
+rp_name: ''
+rp_id: ''
+timeout: 60000
+user_verification: 'preferred'
+attestation: 'none'
+attachment: ''

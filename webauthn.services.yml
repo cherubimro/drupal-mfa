@@ -1,0 +1,14 @@
+services:
+  webauthn.manager:
+    class: Drupal\webauthn\Service\WebAuthnManager
+    arguments: ['@database', '@config.factory']
+
+  webauthn.totp_manager:
+    class: Drupal\webauthn\Service\TotpManager
+    arguments: ['@config.factory']
+
+  webauthn.2fa_subscriber:
+    class: Drupal\webauthn\EventSubscriber\WebAuthn2faSubscriber
+    arguments: ['@current_user', '@config.factory']
+    tags:
+      - { name: event_subscriber }

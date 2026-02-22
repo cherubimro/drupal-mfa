@@ -1,0 +1,123 @@
+<?php
+
+/**
+ * @file
+ * WebAuthn 2FA module hooks.
+ */
+
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Url;
+
+/**
+ * Implements hook_theme().
+ */
+function webauthn_theme() {
+  return [
+    'webauthn_verify' => [
+      'template' => 'webauthn-verify',
+      'render element' => 'form',
+    ],
+    'webauthn_user_settings' => [
+      'template' => 'webauthn-user-settings',
+      'variables' => [
+        'credentials' => [],
+        'tfa_enabled' => FALSE,
+        'has_totp' => FALSE,
+      ],
+    ],
+  ];
+}
+
+/**
+ * Implements hook_preprocess_HOOK() for webauthn-verify.html.twig.
+ */
+function webauthn_preprocess_webauthn_verify(&$variables) {
+  $form = $variables['form'];
+  $variables['login_ip'] = $form['#login_ip'] ?? '';
+  $variables['prev_login_ip'] = $form['#prev_login_ip'] ?? '';
+  $variables['prev_login_time'] = $form['#prev_login_time'] ?? '';
+}
+
+/**
+ * Implements hook_form_user_login_form_alter().
+ *
+ * Replaces the default login submit handler with our own that checks
+ * whether the user needs 2FA before granting full access.
+ */
+function webauthn_form_user_login_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+  // Button-level #submit takes precedence over form-level handlers
+  // in FormSubmitter::executeSubmitHandlers().
+  $form['actions']['submit']['#submit'] = ['webauthn_user_login_submit'];
+}
+
+/**
+ * Custom login submit handler that gates on WebAuthn 2FA.
+ *
+ * Replicates UserLoginForm::submitForm() but adds 2FA check.
+ */
+function webauthn_user_login_submit(array &$form, FormStateInterface $form_state) {
+  $uid = $form_state->get('uid');
+  $account = \Drupal\user\Entity\User::load($uid);
+
+  if (!$account) {
+    return;
+  }
+
+  // Capture previous login info BEFORE user_login_finalize() overwrites it.
+  $prev_login_time = $account->getLastLoginTime();
+  $user_data = \Drupal::service('user.data');
+  $prev_login_ip = $user_data->get('webauthn', $uid, 'last_login_ip');
+
+  // Finalize login (sets auth cookie, fires hook_user_login, etc.).
+  // user_login_finalize() deprecated in D10.3+; use service when available.
+  if (\Drupal::hasService('user.auth_finalize')) {
+    \Drupal::service('user.auth_finalize')->finalizeLogin($account);
+  }
+  else {
+    user_login_finalize($account);
+  }
+
+  // Save current login IP for next time.
+  $current_ip = \Drupal::request()->getClientIp();
+  $user_data->set('webauthn', $uid, 'last_login_ip', $current_ip);
+
+  /** @var \Drupal\webauthn\Service\WebAuthnManager $manager */
+  $manager = \Drupal::service('webauthn.manager');
+
+  if ($manager->should2fa($uid)) {
+    // Set the 2FA pending flag — event subscriber will jail the user.
+    $request = \Drupal::request();
+    $session = $request->getSession();
+    $session->set('webauthn_2fa_pending', TRUE);
+
+    // Store previous login info for the verification page.
+    $session->set('webauthn_prev_login_time', $prev_login_time);
+    $session->set('webauthn_prev_login_ip', $prev_login_ip);
+
+    // Store the intended destination so we can redirect after verification.
+    $destination = $request->query->get('destination');
+    if (!$destination && $request->request->has('destination')) {
+      $destination = $request->request->get('destination');
+    }
+    if ($destination) {
+      $session->set('webauthn_2fa_destination', $destination);
+      // Remove destination so Drupal doesn't redirect there immediately.
+      $request->query->remove('destination');
+      $request->request->remove('destination');
+    }
+
+    $form_state->setRedirectUrl(Url::fromRoute('webauthn.verify'));
+  }
+  else {
+    // No 2FA needed — replicate normal UserLoginForm::submitForm() redirect.
+    if (!$form_state->getRedirect() && !\Drupal::request()->request->has('destination')) {
+      $form_state->setRedirect('entity.user.canonical', ['user' => $account->id()]);
+    }
+    else {
+      $request = \Drupal::request();
+      if ($request->request->has('destination')) {
+        $request->query->set('destination', $request->request->get('destination'));
+      }
+    }
+  }
+}
