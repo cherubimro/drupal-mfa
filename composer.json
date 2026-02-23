@@ -3,7 +3,6 @@
   "type": "drupal-module",
   "description": "FIDO2/WebAuthn and TOTP multi-factor authentication for Drupal",
   "license": "GPL-2.0-or-later",
-  "version": "1.0.0",
   "keywords": ["drupal", "module", "fido2", "webauthn", "totp", "2fa", "mfa", "security-key", "yubikey"],
   "homepage": "https://github.com/cherubimro/drupal-mfa",
   "authors": [
