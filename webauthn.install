@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * @file
  * Install, update, and uninstall functions for the WebAuthn module.
@@ -8,7 +10,7 @@
 /**
  * Implements hook_schema().
  */
-function webauthn_schema() {
+function webauthn_schema(): array {
   $schema['webauthn_credentials'] = [
     'description' => 'Stores WebAuthn/FIDO2 credentials for users.',
     'fields' => [
@@ -125,7 +127,7 @@ function webauthn_schema() {
 /**
  * Implements hook_uninstall().
  */
-function webauthn_uninstall() {
+function webauthn_uninstall(): void {
   // Clean up user data entries.
   \Drupal::database()->delete('users_data')
     ->condition('module', 'webauthn')

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Drupal\webauthn\EventSubscriber;
 
 use Drupal\Core\Config\ConfigFactoryInterface;
@@ -16,19 +18,25 @@ use Symfony\Component\HttpKernel\KernelEvents;
 class WebAuthn2faSubscriber implements EventSubscriberInterface {
 
   /**
+   * The current user.
+   *
    * @var \Drupal\Core\Session\AccountProxyInterface
    */
-  protected $currentUser;
+  protected AccountProxyInterface $currentUser;
 
   /**
+   * The config factory.
+   *
    * @var \Drupal\Core\Config\ConfigFactoryInterface
    */
-  protected $configFactory;
+  protected ConfigFactoryInterface $configFactory;
 
   /**
    * Routes that are allowed while 2FA is pending.
+   *
+   * @var string[]
    */
-  protected static $allowedRoutes = [
+  protected static array $allowedRoutes = [
     'webauthn.verify',
     'webauthn.assert_options',
     'webauthn.assert_verify',
@@ -38,6 +46,11 @@ class WebAuthn2faSubscriber implements EventSubscriberInterface {
 
   /**
    * Constructs the subscriber.
+   *
+   * @param \Drupal\Core\Session\AccountProxyInterface $current_user
+   *   The current user.
+   * @param \Drupal\Core\Config\ConfigFactoryInterface $config_factory
+   *   The config factory.
    */
   public function __construct(AccountProxyInterface $current_user, ConfigFactoryInterface $config_factory) {
     $this->currentUser = $current_user;
@@ -46,8 +59,11 @@ class WebAuthn2faSubscriber implements EventSubscriberInterface {
 
   /**
    * Redirects to verification page if 2FA is pending.
+   *
+   * @param \Symfony\Component\HttpKernel\Event\RequestEvent $event
+   *   The kernel request event.
    */
-  public function onKernelRequest(RequestEvent $event) {
+  public function onKernelRequest(RequestEvent $event): void {
     if (method_exists($event, 'isMainRequest') ? !$event->isMainRequest() : !$event->isMasterRequest()) {
       return;
     }
@@ -78,7 +94,7 @@ class WebAuthn2faSubscriber implements EventSubscriberInterface {
   /**
    * {@inheritdoc}
    */
-  public static function getSubscribedEvents() {
+  public static function getSubscribedEvents(): array {
     // Priority 30: after authentication (300+) and after maintenance mode (31).
     $events[KernelEvents::REQUEST][] = ['onKernelRequest', 30];
     return $events;

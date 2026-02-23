@@ -18,8 +18,8 @@
     "chillerlan/php-qrcode": "^5.0"
   },
   "autoload": {
-    "classmap": [
-      "src/"
-    ]
+    "psr-4": {
+      "Drupal\\webauthn\\": "src/"
+    }
   }
 }

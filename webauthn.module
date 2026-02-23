@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * @file
  * WebAuthn 2FA module hooks.
@@ -11,7 +13,7 @@ use Drupal\Core\Url;
 /**
  * Implements hook_theme().
  */
-function webauthn_theme() {
+function webauthn_theme(): array {
   return [
     'webauthn_verify' => [
       'template' => 'webauthn-verify',
@@ -31,7 +33,7 @@ function webauthn_theme() {
 /**
  * Implements hook_preprocess_HOOK() for webauthn-verify.html.twig.
  */
-function webauthn_preprocess_webauthn_verify(&$variables) {
+function webauthn_preprocess_webauthn_verify(array &$variables): void {
   $form = $variables['form'];
   $variables['login_ip'] = $form['#login_ip'] ?? '';
   $variables['prev_login_ip'] = $form['#prev_login_ip'] ?? '';
@@ -44,7 +46,7 @@ function webauthn_preprocess_webauthn_verify(&$variables) {
  * Replaces the default login submit handler with our own that checks
  * whether the user needs 2FA before granting full access.
  */
-function webauthn_form_user_login_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+function webauthn_form_user_login_form_alter(array &$form, FormStateInterface $form_state, string $form_id): void {
   // Button-level #submit takes precedence over form-level handlers
   // in FormSubmitter::executeSubmitHandlers().
   $form['actions']['submit']['#submit'] = ['webauthn_user_login_submit'];
@@ -55,7 +57,7 @@ function webauthn_form_user_login_form_alter(&$form, FormStateInterface $form_st
  *
  * Replicates UserLoginForm::submitForm() but adds 2FA check.
  */
-function webauthn_user_login_submit(array &$form, FormStateInterface $form_state) {
+function webauthn_user_login_submit(array &$form, FormStateInterface $form_state): void {
   $uid = $form_state->get('uid');
   $account = \Drupal\user\Entity\User::load($uid);
 

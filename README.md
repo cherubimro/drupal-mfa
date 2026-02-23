@@ -94,7 +94,7 @@ transitions and progress indicators.
 ## File structure
 
 ```
-├── composer.json / composer.lock
+├── composer.json
 ├── config/
 │   ├── install/webauthn.settings.yml
 │   └── schema/webauthn.schema.yml

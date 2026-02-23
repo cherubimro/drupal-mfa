@@ -1,12 +1,18 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Drupal\webauthn\Controller;
 
 use Drupal\Core\Controller\ControllerBase;
 use Drupal\Core\Url;
+use Drupal\user\UserDataInterface;
+use Drupal\webauthn\Service\TotpManager;
+use Drupal\webauthn\Service\WebAuthnManager;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Session\SessionInterface;
 
 /**
  * AJAX endpoints for WebAuthn and TOTP ceremony operations.
@@ -14,33 +20,49 @@ use Symfony\Component\HttpFoundation\Request;
 class WebAuthnController extends ControllerBase {
 
   /**
+   * The WebAuthn manager service.
+   *
    * @var \Drupal\webauthn\Service\WebAuthnManager
    */
-  protected $webauthnManager;
+  protected WebAuthnManager $webauthnManager;
 
   /**
+   * The TOTP manager service.
+   *
    * @var \Drupal\webauthn\Service\TotpManager
    */
-  protected $totpManager;
+  protected TotpManager $totpManager;
+
+  /**
+   * The user data service.
+   *
+   * @var \Drupal\user\UserDataInterface
+   */
+  protected UserDataInterface $userData;
 
   /**
    * {@inheritdoc}
    */
-  public static function create(ContainerInterface $container) {
+  public static function create(ContainerInterface $container): static {
     $instance = parent::create($container);
     $instance->webauthnManager = $container->get('webauthn.manager');
     $instance->totpManager = $container->get('webauthn.totp_manager');
+    $instance->userData = $container->get('user.data');
     return $instance;
   }
 
-  // ---- WebAuthn assertion (2FA verification) ----
-
   /**
    * Returns assertion options (challenge) for 2FA verification.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The current request.
+   *
+   * @return \Symfony\Component\HttpFoundation\JsonResponse
+   *   JSON response with assertion options or error.
    */
-  public function assertOptions(Request $request) {
+  public function assertOptions(Request $request): JsonResponse {
     try {
-      $uid = $this->currentUser()->id();
+      $uid = (int) $this->currentUser()->id();
       $result = $this->webauthnManager->beginAssertion($uid);
 
       // Store challenge in session.
@@ -62,10 +84,16 @@ class WebAuthnController extends ControllerBase {
 
   /**
    * Verifies an assertion response for 2FA.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The current request.
+   *
+   * @return \Symfony\Component\HttpFoundation\JsonResponse
+   *   JSON response with verification result.
    */
-  public function assertVerify(Request $request) {
+  public function assertVerify(Request $request): JsonResponse {
     try {
-      $uid = $this->currentUser()->id();
+      $uid = (int) $this->currentUser()->id();
       $session = $request->getSession();
       $challenge = $session->get('webauthn_challenge');
 
@@ -113,14 +141,18 @@ class WebAuthnController extends ControllerBase {
     }
   }
 
-  // ---- WebAuthn registration (key management) ----
-
   /**
    * Returns registration options (challenge) for key registration.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The current request.
+   *
+   * @return \Symfony\Component\HttpFoundation\JsonResponse
+   *   JSON response with registration options or error.
    */
-  public function registerOptions(Request $request) {
+  public function registerOptions(Request $request): JsonResponse {
     try {
-      $uid = $this->currentUser()->id();
+      $uid = (int) $this->currentUser()->id();
       $account = $this->entityTypeManager()->getStorage('user')->load($uid);
       $description = $request->query->get('description', 'Security Key');
 
@@ -145,10 +177,16 @@ class WebAuthnController extends ControllerBase {
 
   /**
    * Completes a key registration ceremony.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The current request.
+   *
+   * @return \Symfony\Component\HttpFoundation\JsonResponse
+   *   JSON response with registration result.
    */
-  public function registerVerify(Request $request) {
+  public function registerVerify(Request $request): JsonResponse {
     try {
-      $uid = $this->currentUser()->id();
+      $uid = (int) $this->currentUser()->id();
       $session = $request->getSession();
       $challenge = $session->get('webauthn_challenge');
       $description = $session->get('webauthn_reg_description', 'Security Key');
@@ -193,9 +231,15 @@ class WebAuthnController extends ControllerBase {
 
   /**
    * Deletes a credential.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The current request.
+   *
+   * @return \Symfony\Component\HttpFoundation\JsonResponse
+   *   JSON response with deletion result.
    */
-  public function deleteCredential(Request $request) {
-    $uid = $this->currentUser()->id();
+  public function deleteCredential(Request $request): JsonResponse {
+    $uid = (int) $this->currentUser()->id();
     $content = json_decode($request->getContent(), TRUE);
     $db_id = (int) ($content['id'] ?? 0);
 
@@ -226,9 +270,15 @@ class WebAuthnController extends ControllerBase {
 
   /**
    * Toggles 2FA enabled/disabled for the current user.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The current request.
+   *
+   * @return \Symfony\Component\HttpFoundation\JsonResponse
+   *   JSON response with toggle result.
    */
-  public function toggle2fa(Request $request) {
-    $uid = $this->currentUser()->id();
+  public function toggle2fa(Request $request): JsonResponse {
+    $uid = (int) $this->currentUser()->id();
     $content = json_decode($request->getContent(), TRUE);
     $enabled = !empty($content['enabled']);
 
@@ -244,20 +294,23 @@ class WebAuthnController extends ControllerBase {
       }
     }
 
-    $user_data = \Drupal::service('user.data');
-    $user_data->set('webauthn', $uid, '2fa_enabled', $enabled ? 1 : 0);
+    $this->userData->set('webauthn', $uid, '2fa_enabled', $enabled ? 1 : 0);
 
     return new JsonResponse(['success' => TRUE]);
   }
 
-  // ---- TOTP (authenticator app) ----
-
   /**
    * Begins TOTP setup: generates secret, returns QR code SVG.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The current request.
+   *
+   * @return \Symfony\Component\HttpFoundation\JsonResponse
+   *   JSON response with secret and QR code SVG.
    */
-  public function totpSetup(Request $request) {
+  public function totpSetup(Request $request): JsonResponse {
     try {
-      $uid = $this->currentUser()->id();
+      $uid = (int) $this->currentUser()->id();
       $account = $this->entityTypeManager()->getStorage('user')->load($uid);
 
       $secret = $this->totpManager->generateSecret();
@@ -284,9 +337,15 @@ class WebAuthnController extends ControllerBase {
 
   /**
    * Confirms TOTP setup by verifying a code against the pending secret.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The current request.
+   *
+   * @return \Symfony\Component\HttpFoundation\JsonResponse
+   *   JSON response with confirmation result.
    */
-  public function totpConfirm(Request $request) {
-    $uid = $this->currentUser()->id();
+  public function totpConfirm(Request $request): JsonResponse {
+    $uid = (int) $this->currentUser()->id();
     $session = $request->getSession();
     $secret = $session->get('webauthn_totp_pending_secret');
 
@@ -323,9 +382,15 @@ class WebAuthnController extends ControllerBase {
 
   /**
    * Removes TOTP configuration for the current user.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The current request.
+   *
+   * @return \Symfony\Component\HttpFoundation\JsonResponse
+   *   JSON response with removal result.
    */
-  public function totpRemove(Request $request) {
-    $uid = $this->currentUser()->id();
+  public function totpRemove(Request $request): JsonResponse {
+    $uid = (int) $this->currentUser()->id();
 
     // Under 'required' policy, don't allow removing TOTP if it's the last method.
     $config = $this->config('webauthn.settings');
@@ -346,9 +411,15 @@ class WebAuthnController extends ControllerBase {
 
   /**
    * Verifies a TOTP code during 2FA gate.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The current request.
+   *
+   * @return \Symfony\Component\HttpFoundation\JsonResponse
+   *   JSON response with verification result.
    */
-  public function totpVerify(Request $request) {
-    $uid = $this->currentUser()->id();
+  public function totpVerify(Request $request): JsonResponse {
+    $uid = (int) $this->currentUser()->id();
     $session = $request->getSession();
 
     $secret = $this->totpManager->getSecret($uid);
@@ -379,8 +450,6 @@ class WebAuthnController extends ControllerBase {
     return $this->complete2fa($session, $uid, 'totp');
   }
 
-  // ---- Helpers ----
-
   /**
    * Completes one step of 2FA/MFA verification.
    *
@@ -388,7 +457,7 @@ class WebAuthnController extends ControllerBase {
    * In "all" mode, every configured method must be verified before the gate
    * clears — making this true MFA when both WebAuthn and TOTP are set up.
    *
-   * @param object $session
+   * @param \Symfony\Component\HttpFoundation\Session\SessionInterface $session
    *   The Symfony session.
    * @param int $uid
    *   Drupal user ID.
@@ -396,8 +465,9 @@ class WebAuthnController extends ControllerBase {
    *   The method just verified: 'webauthn' or 'totp'.
    *
    * @return \Symfony\Component\HttpFoundation\JsonResponse
+   *   JSON response indicating completion or partial progress.
    */
-  protected function complete2fa($session, $uid, $method) {
+  protected function complete2fa(SessionInterface $session, int $uid, string $method): JsonResponse {
     $config = $this->config('webauthn.settings');
     $mode = $config->get('verification_mode') ?: 'any';
 

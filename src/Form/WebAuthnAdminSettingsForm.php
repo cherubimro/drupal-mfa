@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Drupal\webauthn\Form;
 
 use Drupal\Core\Form\ConfigFormBase;
@@ -13,21 +15,21 @@ class WebAuthnAdminSettingsForm extends ConfigFormBase {
   /**
    * {@inheritdoc}
    */
-  protected function getEditableConfigNames() {
+  protected function getEditableConfigNames(): array {
     return ['webauthn.settings'];
   }
 
   /**
    * {@inheritdoc}
    */
-  public function getFormId() {
+  public function getFormId(): string {
     return 'webauthn_admin_settings_form';
   }
 
   /**
    * {@inheritdoc}
    */
-  public function buildForm(array $form, FormStateInterface $form_state) {
+  public function buildForm(array $form, FormStateInterface $form_state): array {
     $config = $this->config('webauthn.settings');
 
     $form['policy'] = [
@@ -118,7 +120,7 @@ class WebAuthnAdminSettingsForm extends ConfigFormBase {
   /**
    * {@inheritdoc}
    */
-  public function submitForm(array &$form, FormStateInterface $form_state) {
+  public function submitForm(array &$form, FormStateInterface $form_state): void {
     $this->config('webauthn.settings')
       ->set('policy', $form_state->getValue('policy'))
       ->set('verification_mode', $form_state->getValue('verification_mode'))

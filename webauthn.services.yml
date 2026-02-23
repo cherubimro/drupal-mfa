@@ -1,14 +1,25 @@
 services:
-  webauthn.manager:
-    class: Drupal\webauthn\Service\WebAuthnManager
-    arguments: ['@database', '@config.factory']
-
   webauthn.totp_manager:
     class: Drupal\webauthn\Service\TotpManager
-    arguments: ['@config.factory']
+    arguments: ['@config.factory', '@user.data']
+
+  webauthn.manager:
+    class: Drupal\webauthn\Service\WebAuthnManager
+    arguments:
+      - '@database'
+      - '@config.factory'
+      - '@webauthn.totp_manager'
+      - '@user.data'
+      - '@datetime.time'
+      - '@logger.channel.webauthn'
+      - '@request_stack'
 
   webauthn.2fa_subscriber:
     class: Drupal\webauthn\EventSubscriber\WebAuthn2faSubscriber
     arguments: ['@current_user', '@config.factory']
     tags:
       - { name: event_subscriber }
+
+  logger.channel.webauthn:
+    parent: logger.channel_base
+    arguments: ['webauthn']

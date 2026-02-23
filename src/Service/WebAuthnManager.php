@@ -1,11 +1,18 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Drupal\webauthn\Service;
 
 use Drupal\Core\Config\ConfigFactoryInterface;
+use Drupal\Core\Config\ImmutableConfig;
 use Drupal\Core\Database\Connection;
-use lbuchs\WebAuthn\WebAuthn;
+use Drupal\Component\Datetime\TimeInterface;
+use Drupal\user\UserDataInterface;
 use lbuchs\WebAuthn\Binary\ByteBuffer;
+use lbuchs\WebAuthn\WebAuthn;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
  * WebAuthn ceremony logic and credential storage.
@@ -15,29 +22,93 @@ use lbuchs\WebAuthn\Binary\ByteBuffer;
 class WebAuthnManager {
 
   /**
+   * The database connection.
+   *
    * @var \Drupal\Core\Database\Connection
    */
-  protected $database;
+  protected Connection $database;
 
   /**
+   * The module configuration.
+   *
    * @var \Drupal\Core\Config\ImmutableConfig
    */
-  protected $config;
+  protected ImmutableConfig $config;
 
   /**
+   * The WebAuthn library instance.
+   *
    * @var \lbuchs\WebAuthn\WebAuthn
    */
-  protected $webauthn;
+  protected WebAuthn $webauthn;
+
+  /**
+   * The TOTP manager service.
+   *
+   * @var \Drupal\webauthn\Service\TotpManager
+   */
+  protected TotpManager $totpManager;
+
+  /**
+   * The user data service.
+   *
+   * @var \Drupal\user\UserDataInterface
+   */
+  protected UserDataInterface $userData;
+
+  /**
+   * The time service.
+   *
+   * @var \Drupal\Component\Datetime\TimeInterface
+   */
+  protected TimeInterface $time;
+
+  /**
+   * The logger.
+   *
+   * @var \Psr\Log\LoggerInterface
+   */
+  protected LoggerInterface $logger;
 
   /**
    * Constructs a WebAuthnManager.
+   *
+   * @param \Drupal\Core\Database\Connection $database
+   *   The database connection.
+   * @param \Drupal\Core\Config\ConfigFactoryInterface $config_factory
+   *   The config factory.
+   * @param \Drupal\webauthn\Service\TotpManager $totp_manager
+   *   The TOTP manager service.
+   * @param \Drupal\user\UserDataInterface $user_data
+   *   The user data service.
+   * @param \Drupal\Component\Datetime\TimeInterface $time
+   *   The time service.
+   * @param \Psr\Log\LoggerInterface $logger
+   *   The logger.
+   * @param \Symfony\Component\HttpFoundation\RequestStack $request_stack
+   *   The request stack.
    */
-  public function __construct(Connection $database, ConfigFactoryInterface $config_factory) {
+  public function __construct(
+    Connection $database,
+    ConfigFactoryInterface $config_factory,
+    TotpManager $totp_manager,
+    UserDataInterface $user_data,
+    TimeInterface $time,
+    LoggerInterface $logger,
+    RequestStack $request_stack,
+  ) {
     $this->database = $database;
     $this->config = $config_factory->get('webauthn.settings');
+    $this->totpManager = $totp_manager;
+    $this->userData = $user_data;
+    $this->time = $time;
+    $this->logger = $logger;
 
-    $rp_name = $this->config->get('rp_name') ?: \Drupal::config('system.site')->get('name') ?: 'Drupal';
-    $rp_id = $this->config->get('rp_id') ?: (\Drupal::request()->getHost() ?: 'localhost');
+    $rp_name = $this->config->get('rp_name')
+      ?: $config_factory->get('system.site')->get('name')
+      ?: 'Drupal';
+    $host = $request_stack->getCurrentRequest()?->getHost() ?? 'localhost';
+    $rp_id = $this->config->get('rp_id') ?: $host;
     // Strip port from rp_id if present.
     if (strpos($rp_id, ':') !== FALSE) {
       $rp_id = explode(':', $rp_id, 2)[0];
@@ -48,16 +119,28 @@ class WebAuthnManager {
   }
 
   /**
-   * Check whether a user has any registered credentials.
+   * Checks whether a user has any registered credentials.
+   *
+   * @param int $uid
+   *   The Drupal user ID.
+   *
+   * @return bool
+   *   TRUE if the user has at least one credential.
    */
-  public function userHasCredentials($uid) {
+  public function userHasCredentials(int $uid): bool {
     return $this->countCredentials($uid) > 0;
   }
 
   /**
-   * Count registered credentials for a user.
+   * Counts registered credentials for a user.
+   *
+   * @param int $uid
+   *   The Drupal user ID.
+   *
+   * @return int
+   *   The number of credentials.
    */
-  public function countCredentials($uid) {
+  public function countCredentials(int $uid): int {
     return (int) $this->database->select('webauthn_credentials', 'wc')
       ->condition('uid', $uid)
       ->countQuery()
@@ -66,9 +149,15 @@ class WebAuthnManager {
   }
 
   /**
-   * Get all credentials for a user.
+   * Gets all credentials for a user.
+   *
+   * @param int $uid
+   *   The Drupal user ID.
+   *
+   * @return array
+   *   Array of credential objects.
    */
-  public function getCredentials($uid) {
+  public function getCredentials(int $uid): array {
     return $this->database->select('webauthn_credentials', 'wc')
       ->fields('wc')
       ->condition('uid', $uid)
@@ -78,21 +167,35 @@ class WebAuthnManager {
   }
 
   /**
-   * Get a single credential by its DB id and user.
+   * Gets a single credential by its DB id and user.
+   *
+   * @param int $uid
+   *   The Drupal user ID.
+   * @param int $db_id
+   *   The database row ID.
+   *
+   * @return object|null
+   *   The credential object, or NULL if not found.
    */
-  public function getCredentialByDbId($uid, $db_id) {
+  public function getCredentialByDbId(int $uid, int $db_id): ?object {
     return $this->database->select('webauthn_credentials', 'wc')
       ->fields('wc')
       ->condition('id', $db_id)
       ->condition('uid', $uid)
       ->execute()
-      ->fetchObject();
+      ->fetchObject() ?: NULL;
   }
 
   /**
-   * Check whether 2FA should be enforced for a user based on policy.
+   * Checks whether 2FA should be enforced for a user based on policy.
+   *
+   * @param int $uid
+   *   The Drupal user ID.
+   *
+   * @return bool
+   *   TRUE if 2FA should be enforced.
    */
-  public function should2fa($uid) {
+  public function should2fa(int $uid): bool {
     $policy = $this->config->get('policy') ?: 'optional';
 
     if ($policy === 'disabled') {
@@ -100,9 +203,7 @@ class WebAuthnManager {
     }
 
     $has_credentials = $this->userHasCredentials($uid);
-    /** @var \Drupal\webauthn\Service\TotpManager $totp_manager */
-    $totp_manager = \Drupal::service('webauthn.totp_manager');
-    $has_totp = $totp_manager->userHasTotp($uid);
+    $has_totp = $this->totpManager->userHasTotp($uid);
     $has_any_method = $has_credentials || $has_totp;
 
     if ($policy === 'required') {
@@ -115,18 +216,24 @@ class WebAuthnManager {
       return FALSE;
     }
 
-    $user_data = \Drupal::service('user.data');
-    $enabled = $user_data->get('webauthn', $uid, '2fa_enabled');
+    $enabled = $this->userData->get('webauthn', $uid, '2fa_enabled');
     return !empty($enabled);
   }
 
   /**
-   * Begin a registration ceremony.
+   * Begins a registration ceremony.
+   *
+   * @param int $uid
+   *   The Drupal user ID.
+   * @param string $username
+   *   The account name.
+   * @param string $description
+   *   A user-given key name.
    *
    * @return array
-   *   ['args' => PublicKeyCredentialCreationOptions, 'challenge' => binary]
+   *   Array with 'args', 'challenge', and 'description' keys.
    */
-  public function beginRegistration($uid, $username, $description) {
+  public function beginRegistration(int $uid, string $username, string $description): array {
     $timeout = (int) ($this->config->get('timeout') ?: 60000);
     $uv = ($this->config->get('user_verification') ?: 'preferred') === 'required';
     $attestation = $this->config->get('attestation') ?: 'none';
@@ -177,9 +284,25 @@ class WebAuthnManager {
   }
 
   /**
-   * Complete a registration ceremony.
+   * Completes a registration ceremony.
+   *
+   * @param int $uid
+   *   The Drupal user ID.
+   * @param string $challenge
+   *   The binary challenge string from the session.
+   * @param string $client_data
+   *   Base64url-encoded client data JSON.
+   * @param string $attestation_obj
+   *   Base64url-encoded attestation object.
+   * @param string $description
+   *   A user-given key name.
+   * @param string $transports
+   *   Comma-separated transport hints.
+   *
+   * @return bool
+   *   TRUE on success.
    */
-  public function finishRegistration($uid, $challenge, $client_data, $attestation_obj, $description, $transports = '') {
+  public function finishRegistration(int $uid, string $challenge, string $client_data, string $attestation_obj, string $description, string $transports = ''): bool {
     $uv = ($this->config->get('user_verification') ?: 'preferred') === 'required';
     $challenge_buf = new ByteBuffer($challenge);
 
@@ -200,7 +323,7 @@ class WebAuthnManager {
       $credential_id = $data->credentialId;
     }
 
-    $now = \Drupal::time()->getRequestTime();
+    $now = $this->time->getRequestTime();
 
     $this->database->insert('webauthn_credentials')
       ->fields([
@@ -225,12 +348,18 @@ class WebAuthnManager {
   }
 
   /**
-   * Begin an assertion (authentication) ceremony.
+   * Begins an assertion (authentication) ceremony.
+   *
+   * @param int $uid
+   *   The Drupal user ID.
    *
    * @return array
-   *   ['args' => PublicKeyCredentialRequestOptions, 'challenge' => binary]
+   *   Array with 'args' and 'challenge' keys.
+   *
+   * @throws \RuntimeException
+   *   If the user has no registered credentials.
    */
-  public function beginAssertion($uid) {
+  public function beginAssertion(int $uid): array {
     $timeout = (int) ($this->config->get('timeout') ?: 60000);
     $uv = ($this->config->get('user_verification') ?: 'preferred') === 'required';
 
@@ -247,11 +376,11 @@ class WebAuthnManager {
     $args = $this->webauthn->getGetArgs(
       $cred_ids,
       $timeout / 1000,
-      TRUE,   // allowUsb
-      TRUE,   // allowNfc
-      TRUE,   // allowBle
-      FALSE,  // allowHybrid
-      TRUE,   // allowInternal
+      TRUE,
+      TRUE,
+      TRUE,
+      FALSE,
+      TRUE,
       $uv
     );
 
@@ -264,9 +393,28 @@ class WebAuthnManager {
   }
 
   /**
-   * Complete an assertion (authentication) ceremony.
+   * Completes an assertion (authentication) ceremony.
+   *
+   * @param int $uid
+   *   The Drupal user ID.
+   * @param string $challenge
+   *   The binary challenge string from the session.
+   * @param string $credential_id
+   *   Base64url-encoded credential ID.
+   * @param string $client_data
+   *   Base64url-encoded client data JSON.
+   * @param string $authenticator_data
+   *   Base64url-encoded authenticator data.
+   * @param string $signature
+   *   Base64url-encoded signature.
+   *
+   * @return bool
+   *   TRUE on successful verification.
+   *
+   * @throws \RuntimeException
+   *   If the credential is unknown or a clone is detected.
    */
-  public function finishAssertion($uid, $challenge, $credential_id, $client_data, $authenticator_data, $signature) {
+  public function finishAssertion(int $uid, string $challenge, string $credential_id, string $client_data, string $authenticator_data, string $signature): bool {
     $cred_id_bin = base64_decode(strtr($credential_id, '-_', '+/'));
     $uv = ($this->config->get('user_verification') ?: 'preferred') === 'required';
 
@@ -295,7 +443,7 @@ class WebAuthnManager {
 
     // Update sign count and last used timestamp.
     $new_count = $this->webauthn->getSignatureCounter();
-    $now = \Drupal::time()->getRequestTime();
+    $now = $this->time->getRequestTime();
 
     if ($new_count !== NULL) {
       // Clone detection: counter must strictly increase (unless both are 0).
@@ -303,7 +451,7 @@ class WebAuthnManager {
       $clone_warning = 0;
       if ($old_count > 0 && $new_count <= $old_count) {
         $clone_warning = 1;
-        \Drupal::logger('webauthn')->warning('Clone warning: credential @cred_id for user @uid — counter went from @old to @new', [
+        $this->logger->warning('Clone warning: credential @cred_id for user @uid — counter went from @old to @new', [
           '@cred_id' => $credential->id,
           '@uid' => $uid,
           '@old' => $old_count,
@@ -335,9 +483,17 @@ class WebAuthnManager {
   }
 
   /**
-   * Delete a credential by its DB id.
+   * Deletes a credential by its DB id.
+   *
+   * @param int $uid
+   *   The Drupal user ID.
+   * @param int $db_id
+   *   The database row ID.
+   *
+   * @return bool
+   *   TRUE if a row was deleted.
    */
-  public function deleteCredential($uid, $db_id) {
+  public function deleteCredential(int $uid, int $db_id): bool {
     return $this->database->delete('webauthn_credentials')
       ->condition('id', $db_id)
       ->condition('uid', $uid)
@@ -345,9 +501,17 @@ class WebAuthnManager {
   }
 
   /**
-   * Find a credential by raw binary credential ID.
+   * Finds a credential by raw binary credential ID.
+   *
+   * @param int $uid
+   *   The Drupal user ID.
+   * @param string $cred_id_bin
+   *   The raw binary credential ID.
+   *
+   * @return object|null
+   *   The credential object, or NULL if not found.
    */
-  protected function findCredentialByRawId($uid, $cred_id_bin) {
+  protected function findCredentialByRawId(int $uid, string $cred_id_bin): ?object {
     $credentials = $this->getCredentials($uid);
     foreach ($credentials as $cred) {
       if ($cred->credential_id === $cred_id_bin) {
