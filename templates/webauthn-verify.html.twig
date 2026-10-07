@@ -55,23 +55,6 @@
     <a href="#" id="webauthn-switch-to-key" style="display:none;">{{ 'Use security key instead'|t }}</a>
   </div>
 
-  <div class="webauthn-verify__login-info">
-    {% if login_ip %}
-      <div class="webauthn-verify__current-ip">
-        {{ 'Current login from: @ip'|t({'@ip': login_ip}) }}
-      </div>
-    {% endif %}
-    {% if prev_login_ip and prev_login_time %}
-      <div class="webauthn-verify__prev-login">
-        {{ 'Last login: @time from @ip'|t({'@time': prev_login_time, '@ip': prev_login_ip}) }}
-      </div>
-    {% elseif prev_login_time %}
-      <div class="webauthn-verify__prev-login">
-        {{ 'Last login: @time'|t({'@time': prev_login_time}) }}
-      </div>
-    {% endif %}
-  </div>
-
   <div class="webauthn-verify__logout">
     <a href="{{ path('user.logout') }}">{{ 'Cancel and log out'|t }}</a>
   </div>

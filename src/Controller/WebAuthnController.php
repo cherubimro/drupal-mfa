@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace Drupal\webauthn\Controller;
 
 use Drupal\Core\Controller\ControllerBase;
+use Drupal\Core\Datetime\DateFormatterInterface;
+use Drupal\Core\Flood\FloodInterface;
 use Drupal\Core\Url;
 use Drupal\user\UserDataInterface;
+use Drupal\webauthn\DestinationHelper;
 use Drupal\webauthn\Service\TotpManager;
 use Drupal\webauthn\Service\WebAuthnManager;
 use Symfony\Component\DependencyInjection\ContainerInterface;
@@ -18,6 +21,45 @@ use Symfony\Component\HttpFoundation\Session\SessionInterface;
  * AJAX endpoints for WebAuthn and TOTP ceremony operations.
  */
 class WebAuthnController extends ControllerBase {
+
+  /**
+   * Flood event name for TOTP verification attempts.
+   */
+  const TOTP_FLOOD_EVENT = 'webauthn.totp_verify';
+
+  /**
+   * Maximum TOTP verification attempts per user in the short window.
+   */
+  const TOTP_FLOOD_SHORT_LIMIT = 5;
+
+  /**
+   * Short flood window in seconds.
+   */
+  const TOTP_FLOOD_SHORT_WINDOW = 900;
+
+  /**
+   * Maximum TOTP verification attempts per user in the long window.
+   */
+  const TOTP_FLOOD_LONG_LIMIT = 20;
+
+  /**
+   * Long flood window in seconds.
+   */
+  const TOTP_FLOOD_LONG_WINDOW = 86400;
+
+  /**
+   * The flood service.
+   *
+   * @var \Drupal\Core\Flood\FloodInterface
+   */
+  protected FloodInterface $flood;
+
+  /**
+   * The date formatter.
+   *
+   * @var \Drupal\Core\Datetime\DateFormatterInterface
+   */
+  protected DateFormatterInterface $dateFormatter;
 
   /**
    * The WebAuthn manager service.
@@ -48,6 +90,8 @@ class WebAuthnController extends ControllerBase {
     $instance->webauthnManager = $container->get('webauthn.manager');
     $instance->totpManager = $container->get('webauthn.totp_manager');
     $instance->userData = $container->get('user.data');
+    $instance->flood = $container->get('flood');
+    $instance->dateFormatter = $container->get('date.formatter');
     return $instance;
   }
 
@@ -356,17 +400,17 @@ class WebAuthnController extends ControllerBase {
       ], 400);
     }
 
-    $content = json_decode($request->getContent(), TRUE);
-    $code = trim($content['code'] ?? '');
+    $code = $this->getSubmittedCode($request);
 
-    if (!$code) {
+    if ($code === NULL) {
       return new JsonResponse([
         'success' => FALSE,
         'error' => 'Please enter the 6-digit code.',
       ], 400);
     }
 
-    if (!$this->totpManager->verifyCode($secret, $code)) {
+    // Consuming the code here also stops it being replayed at the next login.
+    if (!$this->totpManager->verifyAndConsume($uid, $secret, $code)) {
       return new JsonResponse([
         'success' => FALSE,
         'error' => 'Invalid code. Please check the time on your device and try again.',
@@ -430,23 +474,43 @@ class WebAuthnController extends ControllerBase {
       ], 400);
     }
 
-    $content = json_decode($request->getContent(), TRUE);
-    $code = trim($content['code'] ?? '');
+    $code = $this->getSubmittedCode($request);
 
-    if (!$code) {
+    if ($code === NULL) {
       return new JsonResponse([
         'success' => FALSE,
         'error' => 'Please enter the 6-digit code.',
       ], 400);
     }
 
-    if (!$this->totpManager->verifyCode($secret, $code)) {
+    $flood_id = 'uid:' . $uid;
+    // Refuse while locked without recording anything, so refused requests
+    // do not extend the lock.
+    if ($retry_after = $this->getTotpLockout($flood_id, 0)) {
+      return $this->totpLockedResponse($uid, $retry_after);
+    }
+    // Record the attempt before checking the code, so concurrent requests
+    // cannot all pass the limit before any failure is stored. The count then
+    // includes this attempt.
+    $this->flood->register(self::TOTP_FLOOD_EVENT, self::TOTP_FLOOD_LONG_WINDOW, $flood_id);
+    if ($retry_after = $this->getTotpLockout($flood_id, 1)) {
+      return $this->totpLockedResponse($uid, $retry_after);
+    }
+
+    if (!$this->totpManager->verifyAndConsume($uid, $secret, $code)) {
+      $this->getLogger('webauthn')->notice('Invalid authenticator code for user @uid.', ['@uid' => $uid]);
+      // Log the lockout once, as it is reached; later refusals stay silent so
+      // they cannot be used to flood the log.
+      if ($this->getTotpLockout($flood_id, 0)) {
+        $this->getLogger('webauthn')->warning('Authenticator code verification locked for user @uid after too many attempts.', ['@uid' => $uid]);
+      }
       return new JsonResponse([
         'success' => FALSE,
         'error' => 'Invalid code. Please try again.',
       ], 400);
     }
 
+    $this->flood->clear(self::TOTP_FLOOD_EVENT, $flood_id);
     return $this->complete2fa($session, $uid, 'totp');
   }
 
@@ -504,10 +568,29 @@ class WebAuthnController extends ControllerBase {
       $session->remove('webauthn_mfa_completed');
     }
 
-    // Clear the gate.
+    // Clear the gate, give the now fully authenticated session a new ID, and
+    // record that it completed 2FA.
     $session->remove('webauthn_2fa_pending');
+    $session->migrate();
+    $session->set('webauthn_2fa_ok', $uid);
+    $this->getLogger('webauthn')->info('Two-factor verification completed for user @uid (@method).', [
+      '@uid' => $uid,
+      '@method' => $method,
+    ]);
 
-    $destination = $session->get('webauthn_2fa_destination');
+    // Previous login details are only shown once the second factor passed.
+    $prev_time = (int) $session->get('webauthn_prev_login_time', 0);
+    $prev_ip = (string) $session->get('webauthn_prev_login_ip', '');
+    $session->remove('webauthn_prev_login_time');
+    $session->remove('webauthn_prev_login_ip');
+    if ($prev_time) {
+      $time = $this->dateFormatter->format($prev_time, 'medium');
+      $this->messenger()->addStatus($prev_ip !== ''
+        ? $this->t('Last login: @time from @ip', ['@time' => $time, '@ip' => $prev_ip])
+        : $this->t('Last login: @time', ['@time' => $time]));
+    }
+
+    $destination = DestinationHelper::localPath($session->get('webauthn_2fa_destination'));
     $session->remove('webauthn_2fa_destination');
 
     $redirect = $destination ?: Url::fromRoute('entity.user.canonical', ['user' => $uid])->toString();
@@ -516,6 +599,64 @@ class WebAuthnController extends ControllerBase {
       'success' => TRUE,
       'redirect' => $redirect,
     ]);
+  }
+
+  /**
+   * Gets the submitted 6-digit code from a JSON request body.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The current request.
+   *
+   * @return string|null
+   *   The code, or NULL if the body does not contain exactly six digits.
+   */
+  protected function getSubmittedCode(Request $request): ?string {
+    $content = json_decode($request->getContent(), TRUE);
+    $code = is_array($content) ? ($content['code'] ?? NULL) : NULL;
+    if (!is_string($code)) {
+      return NULL;
+    }
+    $code = preg_replace('/\s+/', '', $code);
+    return preg_match('/^\d{6}$/', $code) ? $code : NULL;
+  }
+
+  /**
+   * Checks whether TOTP verification is locked for a flood identifier.
+   *
+   * @param string $flood_id
+   *   The flood identifier.
+   * @param int $included
+   *   Number of attempts already recorded for the current request (0 or 1).
+   *
+   * @return int
+   *   Seconds until the lock may expire (an upper bound), or 0 if unlocked.
+   */
+  protected function getTotpLockout(string $flood_id, int $included): int {
+    if (!$this->flood->isAllowed(self::TOTP_FLOOD_EVENT, self::TOTP_FLOOD_LONG_LIMIT + $included, self::TOTP_FLOOD_LONG_WINDOW, $flood_id)) {
+      return self::TOTP_FLOOD_LONG_WINDOW;
+    }
+    if (!$this->flood->isAllowed(self::TOTP_FLOOD_EVENT, self::TOTP_FLOOD_SHORT_LIMIT + $included, self::TOTP_FLOOD_SHORT_WINDOW, $flood_id)) {
+      return self::TOTP_FLOOD_SHORT_WINDOW;
+    }
+    return 0;
+  }
+
+  /**
+   * Builds the response for a locked TOTP verification.
+   *
+   * @param int $uid
+   *   The user ID.
+   * @param int $retry_after
+   *   Seconds until the lock may expire.
+   *
+   * @return \Symfony\Component\HttpFoundation\JsonResponse
+   *   A 429 response.
+   */
+  protected function totpLockedResponse(int $uid, int $retry_after): JsonResponse {
+    return new JsonResponse([
+      'success' => FALSE,
+      'error' => 'Too many attempts. Please try again later.',
+    ], 429, ['Retry-After' => (string) $retry_after]);
   }
 
 }

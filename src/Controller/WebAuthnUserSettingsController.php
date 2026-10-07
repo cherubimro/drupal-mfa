@@ -7,7 +7,6 @@ namespace Drupal\webauthn\Controller;
 use Drupal\Core\Access\AccessResult;
 use Drupal\Core\Access\AccessResultInterface;
 use Drupal\Core\Access\CsrfTokenGenerator;
-use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Controller\ControllerBase;
 use Drupal\Core\Datetime\DateFormatterInterface;
 use Drupal\Core\Session\AccountInterface;
@@ -57,13 +56,6 @@ class WebAuthnUserSettingsController extends ControllerBase {
    * @var \Drupal\Core\Access\CsrfTokenGenerator
    */
   protected CsrfTokenGenerator $csrfToken;
-
-  /**
-   * The config factory.
-   *
-   * @var \Drupal\Core\Config\ConfigFactoryInterface
-   */
-  protected ConfigFactoryInterface $configFactory;
 
   /**
    * {@inheritdoc}

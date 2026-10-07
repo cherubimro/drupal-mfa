@@ -5,15 +5,12 @@ declare(strict_types=1);
 namespace Drupal\webauthn\Form;
 
 use Drupal\Core\Access\CsrfTokenGenerator;
-use Drupal\Core\Config\ConfigFactoryInterface;
-use Drupal\Core\Datetime\DateFormatterInterface;
 use Drupal\Core\Form\FormBase;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Session\AccountProxyInterface;
 use Drupal\webauthn\Service\TotpManager;
 use Drupal\webauthn\Service\WebAuthnManager;
 use Symfony\Component\DependencyInjection\ContainerInterface;
-use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
  * 2FA/MFA verification form displayed after password login.
@@ -34,12 +31,6 @@ class WebAuthnVerifyForm extends FormBase {
    */
   protected AccountProxyInterface $account;
 
-  /**
-   * The config factory.
-   *
-   * @var \Drupal\Core\Config\ConfigFactoryInterface
-   */
-  protected ConfigFactoryInterface $configFactory;
 
   /**
    * The WebAuthn manager service.
@@ -56,20 +47,6 @@ class WebAuthnVerifyForm extends FormBase {
   protected TotpManager $totpManager;
 
   /**
-   * The request stack.
-   *
-   * @var \Symfony\Component\HttpFoundation\RequestStack
-   */
-  protected RequestStack $requestStack;
-
-  /**
-   * The date formatter service.
-   *
-   * @var \Drupal\Core\Datetime\DateFormatterInterface
-   */
-  protected DateFormatterInterface $dateFormatter;
-
-  /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container): static {
@@ -80,7 +57,6 @@ class WebAuthnVerifyForm extends FormBase {
     $instance->webauthnManager = $container->get('webauthn.manager');
     $instance->totpManager = $container->get('webauthn.totp_manager');
     $instance->requestStack = $container->get('request_stack');
-    $instance->dateFormatter = $container->get('date.formatter');
     return $instance;
   }
 
@@ -125,10 +101,6 @@ class WebAuthnVerifyForm extends FormBase {
     }
 
     $form['#theme'] = 'webauthn_verify';
-    $form['#login_ip'] = $request?->getClientIp() ?? '';
-    $form['#prev_login_ip'] = $session ? $session->get('webauthn_prev_login_ip') : '';
-    $prev_time = $session ? $session->get('webauthn_prev_login_time') : 0;
-    $form['#prev_login_time'] = $prev_time ? $this->dateFormatter->format($prev_time, 'medium') : '';
     $form['#cache'] = ['max-age' => 0];
     $form['#attached']['library'][] = 'webauthn/webauthn';
     $form['#attached']['drupalSettings']['webauthn'] = $settings;

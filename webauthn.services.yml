@@ -1,7 +1,7 @@
 services:
   webauthn.totp_manager:
     class: Drupal\webauthn\Service\TotpManager
-    arguments: ['@config.factory', '@user.data']
+    arguments: ['@config.factory', '@user.data', '@datetime.time', '@lock']
 
   webauthn.manager:
     class: Drupal\webauthn\Service\WebAuthnManager
@@ -16,9 +16,15 @@ services:
 
   webauthn.2fa_subscriber:
     class: Drupal\webauthn\EventSubscriber\WebAuthn2faSubscriber
-    arguments: ['@current_user', '@config.factory']
+    arguments: ['@current_user', '@webauthn.manager']
     tags:
       - { name: event_subscriber }
+
+  webauthn.page_cache_request_policy.deny_pending_2fa:
+    class: Drupal\webauthn\PageCache\DenyPendingTwoFactor
+    arguments: ['@current_user']
+    tags:
+      - { name: dynamic_page_cache_request_policy }
 
   logger.channel.webauthn:
     parent: logger.channel_base

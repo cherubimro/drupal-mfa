@@ -12,9 +12,9 @@
     }
   ],
   "require": {
-    "php": ">=7.4",
+    "php": ">=8.1",
     "lbuchs/webauthn": "^2.2",
-    "spomky-labs/otphp": "^10.0",
+    "spomky-labs/otphp": "^11.4.3",
     "chillerlan/php-qrcode": "^5.0"
   },
   "autoload": {

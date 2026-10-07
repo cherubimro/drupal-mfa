@@ -7,8 +7,15 @@ declare(strict_types=1);
  * WebAuthn 2FA module hooks.
  */
 
+use Drupal\Core\Access\AccessResult;
+use Drupal\Core\Access\AccessResultInterface;
 use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Session\AccountInterface;
 use Drupal\Core\Url;
+use Drupal\block\Entity\Block;
+use Drupal\user\Entity\User;
+use Drupal\user\LoginFinalizer;
+use Drupal\webauthn\DestinationHelper;
 
 /**
  * Implements hook_theme().
@@ -31,13 +38,49 @@ function webauthn_theme(): array {
 }
 
 /**
- * Implements hook_preprocess_HOOK() for webauthn-verify.html.twig.
+ * Implements hook_block_access().
+ *
+ * While a session still owes a second factor, the verification page is served
+ * as a normal themed page. Hide every block except the main content so that
+ * account-specific blocks are not disclosed to someone holding only the
+ * password.
  */
-function webauthn_preprocess_webauthn_verify(array &$variables): void {
-  $form = $variables['form'];
-  $variables['login_ip'] = $form['#login_ip'] ?? '';
-  $variables['prev_login_ip'] = $form['#prev_login_ip'] ?? '';
-  $variables['prev_login_time'] = $form['#prev_login_time'] ?? '';
+function webauthn_block_access(Block $block, string $operation, AccountInterface $account): AccessResultInterface {
+  if ($operation === 'view' && $block->getPluginId() !== 'system_main_block' && _webauthn_2fa_is_pending()) {
+    return AccessResult::forbidden()->setCacheMaxAge(0);
+  }
+  return AccessResult::neutral();
+}
+
+/**
+ * Implements hook_preprocess_HOOK() for html.
+ *
+ * Removes everything rendered above the page while 2FA is pending: the
+ * toolbar, the navigation sidebar and any other page_top content. Setting
+ * #access on toolbar items is not enough, because the toolbar's own preprocess
+ * copies tabs and trays into variables regardless, and the element may be
+ * served from the render cache before any alter hook runs.
+ */
+function webauthn_preprocess_html(array &$variables): void {
+  if (_webauthn_2fa_is_pending()) {
+    $variables['page_top'] = NULL;
+  }
+}
+
+/**
+ * Checks whether the current session still owes a second factor.
+ *
+ * @return bool
+ *   TRUE if the current cookie session is 2FA-pending for the current user.
+ */
+function _webauthn_2fa_is_pending(): bool {
+  $request = \Drupal::requestStack()->getCurrentRequest();
+  if (!$request || !$request->hasSession() || !$request->getSession()->get('webauthn_2fa_pending')) {
+    return FALSE;
+  }
+  $uid = (int) \Drupal::currentUser()->id();
+  $session = $request->getSession();
+  return $uid > 0 && (int) $session->get('uid') === $uid && $session->get('webauthn_2fa_ok') !== $uid;
 }
 
 /**
@@ -58,8 +101,10 @@ function webauthn_form_user_login_form_alter(array &$form, FormStateInterface $f
  * Replicates UserLoginForm::submitForm() but adds 2FA check.
  */
 function webauthn_user_login_submit(array &$form, FormStateInterface $form_state): void {
-  $uid = $form_state->get('uid');
-  $account = \Drupal\user\Entity\User::load($uid);
+  // UserLoginForm stores the value of User::id(), which is a string, while the
+  // services here are typed for int.
+  $uid = (int) $form_state->get('uid');
+  $account = User::load($uid);
 
   if (!$account) {
     return;
@@ -71,9 +116,10 @@ function webauthn_user_login_submit(array &$form, FormStateInterface $form_state
   $prev_login_ip = $user_data->get('webauthn', $uid, 'last_login_ip');
 
   // Finalize login (sets auth cookie, fires hook_user_login, etc.).
-  // user_login_finalize() deprecated in D10.3+; use service when available.
-  if (\Drupal::hasService('user.auth_finalize')) {
-    \Drupal::service('user.auth_finalize')->finalizeLogin($account);
+  // LoginFinalizer exists from Drupal 11.4; user_login_finalize() is the
+  // non-deprecated call on older supported versions.
+  if (\Drupal::hasService(LoginFinalizer::class)) {
+    \Drupal::service(LoginFinalizer::class)->finalizeLogin($account);
   }
   else {
     user_login_finalize($account);
@@ -86,10 +132,15 @@ function webauthn_user_login_submit(array &$form, FormStateInterface $form_state
   /** @var \Drupal\webauthn\Service\WebAuthnManager $manager */
   $manager = \Drupal::service('webauthn.manager');
 
+  $request = \Drupal::request();
+  $session = $request->getSession();
+  // A new login must re-establish 2FA, even if the session is reused.
+  $session->remove('webauthn_2fa_ok');
+  $session->remove('webauthn_mfa_completed');
+  $session->remove('webauthn_2fa_destination');
+
   if ($manager->should2fa($uid)) {
     // Set the 2FA pending flag — event subscriber will jail the user.
-    $request = \Drupal::request();
-    $session = $request->getSession();
     $session->set('webauthn_2fa_pending', TRUE);
 
     // Store previous login info for the verification page.
@@ -102,7 +153,11 @@ function webauthn_user_login_submit(array &$form, FormStateInterface $form_state
       $destination = $request->request->get('destination');
     }
     if ($destination) {
-      $session->set('webauthn_2fa_destination', $destination);
+      // Only remember local paths: the destination is later followed by
+      // JavaScript, which bypasses core's redirect checks.
+      if ($local_destination = DestinationHelper::localPath($destination)) {
+        $session->set('webauthn_2fa_destination', $local_destination);
+      }
       // Remove destination so Drupal doesn't redirect there immediately.
       $request->query->remove('destination');
       $request->request->remove('destination');
@@ -111,7 +166,10 @@ function webauthn_user_login_submit(array &$form, FormStateInterface $form_state
     $form_state->setRedirectUrl(Url::fromRoute('webauthn.verify'));
   }
   else {
-    // No 2FA needed — replicate normal UserLoginForm::submitForm() redirect.
+    // No 2FA needed at login; let this session through the gate.
+    $session->set('webauthn_2fa_ok', $uid);
+
+    // Replicate normal UserLoginForm::submitForm() redirect.
     if (!$form_state->getRedirect() && !\Drupal::request()->request->has('destination')) {
       $form_state->setRedirect('entity.user.canonical', ['user' => $account->id()]);
     }

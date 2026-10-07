@@ -6,8 +6,10 @@ namespace Drupal\webauthn\Service;
 
 use chillerlan\QRCode\QRCode;
 use chillerlan\QRCode\QROptions;
+use Drupal\Component\Datetime\TimeInterface;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Config\ImmutableConfig;
+use Drupal\Core\Lock\LockBackendInterface;
 use Drupal\user\UserDataInterface;
 use OTPHP\TOTP;
 use ParagonIE\ConstantTime\Base32;
@@ -19,6 +21,14 @@ use ParagonIE\ConstantTime\Base32;
  * for authenticator app 2FA (Google Authenticator, andOTP, FreeOTP, etc.).
  */
 class TotpManager {
+
+  /**
+   * Verification leeway in seconds; must stay below the 30s period.
+   *
+   * 15s allows for slow entry around a period boundary and accepts at most
+   * two codes at any moment.
+   */
+  const LEEWAY = 15;
 
   /**
    * The module configuration.
@@ -42,17 +52,37 @@ class TotpManager {
   protected ConfigFactoryInterface $configFactory;
 
   /**
+   * The clock used for OTP generation and verification.
+   *
+   * @var \Drupal\webauthn\Service\TotpClock
+   */
+  protected TotpClock $clock;
+
+  /**
+   * The lock backend.
+   *
+   * @var \Drupal\Core\Lock\LockBackendInterface
+   */
+  protected LockBackendInterface $lock;
+
+  /**
    * Constructs a TotpManager.
    *
    * @param \Drupal\Core\Config\ConfigFactoryInterface $config_factory
    *   The config factory.
    * @param \Drupal\user\UserDataInterface $user_data
    *   The user data service.
+   * @param \Drupal\Component\Datetime\TimeInterface $time
+   *   The time service.
+   * @param \Drupal\Core\Lock\LockBackendInterface $lock
+   *   The lock backend.
    */
-  public function __construct(ConfigFactoryInterface $config_factory, UserDataInterface $user_data) {
+  public function __construct(ConfigFactoryInterface $config_factory, UserDataInterface $user_data, TimeInterface $time, LockBackendInterface $lock) {
     $this->configFactory = $config_factory;
     $this->config = $config_factory->get('webauthn.settings');
     $this->userData = $user_data;
+    $this->clock = new TotpClock($time);
+    $this->lock = $lock;
   }
 
   /**
@@ -80,7 +110,7 @@ class TotpManager {
    *   otpauth://totp/... URI.
    */
   public function getProvisioningUri(string $secret, string $username): string {
-    $totp = TOTP::create($secret);
+    $totp = TOTP::createFromSecret($secret, $this->clock);
     $totp->setLabel($username);
 
     $issuer = $this->config->get('rp_name')
@@ -112,7 +142,31 @@ class TotpManager {
   }
 
   /**
+   * Finds the time step a TOTP code belongs to.
+   *
+   * @param string $secret
+   *   Base32-encoded TOTP secret.
+   * @param string $code
+   *   The 6-digit code entered by the user.
+   *
+   * @return int|null
+   *   The matching time step, or NULL if the code is not valid now.
+   */
+  protected function matchTimeStep(string $secret, string $code): ?int {
+    $totp = TOTP::createFromSecret($secret, $this->clock);
+    $now = $this->clock->now()->getTimestamp();
+    foreach ([$now - self::LEEWAY, $now, $now + self::LEEWAY] as $timestamp) {
+      if (hash_equals($totp->at($timestamp), $code)) {
+        return intdiv($timestamp - $totp->getEpoch(), $totp->getPeriod());
+      }
+    }
+    return NULL;
+  }
+
+  /**
    * Verifies a 6-digit TOTP code against a secret.
+   *
+   * Does not prevent replay; use verifyAndConsume() when authenticating.
    *
    * @param string $secret
    *   Base32-encoded TOTP secret.
@@ -123,9 +177,46 @@ class TotpManager {
    *   TRUE if the code is valid.
    */
   public function verifyCode(string $secret, string $code): bool {
-    $totp = TOTP::create($secret);
-    // Window of 10 allows +/- 5 minutes clock drift.
-    return $totp->verify($code, NULL, 10);
+    return $this->matchTimeStep($secret, $code) !== NULL;
+  }
+
+  /**
+   * Verifies a code and marks its time step as used for the user.
+   *
+   * A code is accepted only if its time step is later than the last one
+   * accepted for this user, so each code can be used once (RFC 6238 5.2).
+   *
+   * @param int $uid
+   *   Drupal user ID.
+   * @param string $secret
+   *   Base32-encoded TOTP secret.
+   * @param string $code
+   *   The 6-digit code entered by the user.
+   *
+   * @return bool
+   *   TRUE if the code is valid and was not used before.
+   */
+  public function verifyAndConsume(int $uid, string $secret, string $code): bool {
+    $step = $this->matchTimeStep($secret, $code);
+    if ($step === NULL) {
+      return FALSE;
+    }
+    // Serialize per user without waiting: a concurrent attempt simply fails.
+    $lock_name = 'webauthn_totp_step:' . $uid;
+    if (!$this->lock->acquire($lock_name, 5)) {
+      return FALSE;
+    }
+    try {
+      $last = $this->userData->get('webauthn', $uid, 'totp_last_step');
+      if ($last !== NULL && $step <= (int) $last) {
+        return FALSE;
+      }
+      $this->userData->set('webauthn', $uid, 'totp_last_step', $step);
+      return TRUE;
+    }
+    finally {
+      $this->lock->release($lock_name);
+    }
   }
 
   /**

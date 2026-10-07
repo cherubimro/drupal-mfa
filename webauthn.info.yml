@@ -2,7 +2,7 @@ name: 'WebAuthn 2FA'
 type: module
 description: 'Provides FIDO2/WebAuthn two-factor authentication using hardware security keys and passkeys.'
 package: Security
-core_version_requirement: ^9.2 || ^10 || ^11
+core_version_requirement: ^10 || ^11
 dependencies:
   - drupal:user
 configure: webauthn.admin_settings

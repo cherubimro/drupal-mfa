@@ -109,3 +109,12 @@ webauthn.admin_settings:
     _title: 'WebAuthn 2FA Settings'
   requirements:
     _permission: 'administer webauthn'
+
+webauthn.totp_verify_api:
+  path: '/webauthn/api/totp-verify'
+  defaults:
+    _controller: '\Drupal\webauthn\Controller\WebAuthnController::totpVerify'
+  requirements:
+    _user_is_logged_in: 'TRUE'
+    _csrf_request_header_token: 'TRUE'
+  methods: [POST]
