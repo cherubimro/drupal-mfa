@@ -155,7 +155,27 @@ Two checks matter:
   verification, the `lbuchs/webauthn` library and the relying party identifier
   are all unchanged.
 
-## 7. Things the fix deliberately stops
+## 7. Requiring every configured factor
+
+Set `verification_mode` to `all` for an account that has both a security key and
+an authenticator app. Neither factor alone may finish the login.
+
+Tested here with Chrome's virtual authenticator on Drupal 11.3.2:
+
+- Password accepted, user sent to the verification page.
+- The key ceremony completes. The session stays on the verification page, the
+  key section is hidden and the code section is shown. **One factor is not
+  enough**, which is the point of the mode.
+- The code is accepted, and the login completes; the account edit page is then
+  reachable.
+
+One observation rather than a fault: only the **final** factor appears in the
+log, because completion is logged once the login finishes, while the first
+factor returns earlier as partial progress. So a log for an "all" mode login
+reads `(totp)` even though a key was also presented. Recording both would be
+better for incident response and is worth a later, non-security release.
+
+## 8. Things the fix deliberately stops
 
 Each of these worked only while the second factor was being skipped, so they are
 expected to fail now. They are not regressions:
@@ -168,13 +188,11 @@ expected to fail now. They are not regressions:
   that account's verification page; log out to recover.
 - A user already signed in when the module is updated is asked to verify once.
 
-## 8. What has not been tested
+## 9. What has not been tested
 
 Being explicit so nobody assumes more coverage than exists:
 
-- The verification mode that requires **every** configured factor rather than
-  any one of them.
-- Drupal 10, and PHP 8.1.
+- PHP 8.1. The branch declares support for it and nobody has run it there.
 - MySQL. The user-ID fix makes the code independent of what the driver returns,
   but the branch has only been exercised on SQLite.
 - Masquerade and specific SSO modules, which are documented above rather than
