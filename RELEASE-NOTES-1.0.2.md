@@ -186,7 +186,9 @@ requirement for that user until they enrol again.
   authenticator code verification, with a clear write-up and a reproducible
   method. The two further security issues above were found while reviewing the
   module for similar problems, which that report prompted, so they are his doing
-  as much as mine.
+  as much as mine. He also retested the fix thoroughly and found one more case
+  that is fixed here, where an error page for a request that could not supply a
+  second factor was still rendered in the account's context.
 - **nicrodgers** reported the fatal error on load and opened a merge request for
   it.
 - **vinodhini.e** tested and confirmed that fix.

@@ -68,7 +68,12 @@ stop working because they depended on the second factor being skipped.
 - **Sanjeev Kumar** (ksanjeev284) — reported the missing rate limit on
   authenticator code verification, with a clear write-up and a reproducible
   method. The other two security issues were found while reviewing the module
-  for similar problems, which that report prompted.
+  for similar problems, which that report prompted. He then retested the fix in
+  detail on Drupal 10.6 and found a remaining case this release also fixes: a
+  request authenticated by credentials on the request, refused because the
+  provider is not allowed on the route, still had its error page rendered in
+  the account's context. His diagnosis of why was correct and is what the fix
+  is built on.
 - **nicrodgers** — reported the fatal error on load and opened the merge request
   for it.
 - **vinodhini.e** — tested and confirmed the fix for the fatal error.

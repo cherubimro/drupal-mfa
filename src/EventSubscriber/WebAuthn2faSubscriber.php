@@ -184,9 +184,20 @@ class WebAuthn2faSubscriber implements EventSubscriberInterface {
 
     $uid = (int) $this->currentUser->id();
     $session = $request->hasSession() ? $request->getSession() : NULL;
-    if (!$session || (int) $session->get('uid') !== $uid) {
+    $session_login = $session && (int) $session->get('uid') === $uid;
+
+    if (!$session_login) {
+      // Authenticated by credentials on the request itself, which cannot
+      // present a second factor. Core rejects some of those before the
+      // request gate runs — a provider not allowed on the route is refused at
+      // a higher priority — so the denial arrives here instead. Nothing may
+      // render as the account either way.
+      if ($this->webauthnManager->should2fa($uid)) {
+        $event->setResponse($this->deniedResponse($request, 'Two-factor authentication is required for this account.'));
+      }
       return;
     }
+
     if ($session->get('webauthn_2fa_ok') === $uid || !$this->webauthnManager->should2fa($uid)) {
       return;
     }
