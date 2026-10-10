@@ -110,13 +110,31 @@ http://SITE/user/login?destination=javascript%3Aalert(1)
 
 Complete the login and verification, then see where the browser goes.
 
-- **Released:** the JSON response's `redirect` is the supplied value, and the
-  module's JavaScript follows it with `window.location.href` — so an external
-  site, or a `javascript:` URL executing in the site's context.
+- **Released (1.0.0):** `https://example.com` never reaches the module, because
+  core's `RequestSanitizer` removes destinations it considers external — so no
+  cross-site redirect. `javascript:alert(1)` and `data:` URLs **do** reach it:
+  verified on Drupal 10.1 that the value is stored in the session and returned
+  as the verification response's `redirect`, which the module's JavaScript then
+  follows with `window.location.href`, running in the site's origin.
+- **Released (1.0.1):** unreachable, because the login form fails with a 500
+  before a destination is stored.
 - **Fixed:** both are discarded and the user lands on their account page. The
   validation accepts only paths beginning with a single `/`, with no control
   characters, that core does not consider external. `//host`, `/\host`,
   `/<tab>/host`, `data:` and scheme URLs are all rejected.
+
+Which destinations core itself strips, measured on Drupal 10.1, since it
+determines what the module ever saw:
+
+| destination | core's `RequestSanitizer` |
+|---|---|
+| `https://example.com` | removed |
+| `//example.com` | removed |
+| `/\example.com` | removed |
+| `javascript:alert(1)` | passes |
+| `JaVaScRiPt:alert(1)` | passes |
+| `data:text/html,x` | passes |
+| `/node/1` | passes |
 
 Note for anyone writing a similar check: `UrlHelper::isExternal()` does **not**
 report `javascript:` as external, so testing only for external URLs does not

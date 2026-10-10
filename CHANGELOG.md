@@ -21,11 +21,16 @@ stop working because they depended on the second factor being skipped.
   minutes wide in each direction, so about 21 codes were valid at any moment.
   Attempts are now limited per account (5 per 15 minutes, 20 per 24 hours), the
   window accepts at most two codes, and a code cannot be used twice.
-- **The page shown after verification could be chosen by an attacker.** The
-  destination came from the login URL and was followed by JavaScript, which
-  bypasses Drupal's redirect protection, so a crafted login link could send the
-  user to another site or run a `javascript:` URL. Destinations are now accepted
-  only if they are local paths.
+- **A crafted login link could run script on the site after a successful
+  login.** The page shown after verification came from the login URL's
+  `destination` parameter and was followed by client-side JavaScript, which
+  bypasses Drupal's own redirect checks. Core removes destinations it considers
+  external, so sending the user to another site was not possible — but
+  `UrlHelper::isExternal()` does not treat `javascript:` or `data:` as external,
+  so those passed core's filter, were stored by the module and then ran in the
+  site's origin. Destinations are now accepted only if they are local paths.
+  Exploitable on 1.0.0; on 1.0.1 the login form fails before a destination is
+  stored, so it could not be reached there.
 
 ### Fixed
 

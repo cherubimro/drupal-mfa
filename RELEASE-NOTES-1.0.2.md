@@ -27,12 +27,15 @@ speed. Failed attempts are now limited per account (5 per 15 minutes and 20 per
 24 hours), the window accepts at most two codes, and a code cannot be used
 twice.
 
-**The page shown after verification could be chosen by an attacker.** The
-destination was taken from the login URL and followed by JavaScript, which
-bypasses Drupal's own redirect protection. A crafted login link could send the
-user to another site, or run a `javascript:` URL in the context of your site,
-immediately after a successful login. Destinations are now accepted only if
-they are paths on this site.
+**A crafted login link could run script on your site after a successful
+login.** The page shown after verification was taken from the login URL's
+`destination` parameter and followed by JavaScript, which bypasses Drupal's own
+redirect checks. Drupal removes destinations it considers external, so this
+could not send a user to a different site — but it does not treat `javascript:`
+or `data:` as external, so a link carrying one of those reached the module and
+ran in your site's context immediately after the user signed in. Destinations
+are now accepted only if they are paths on this site. This affected 1.0.0; on
+1.0.1 the login form fails earlier, so it could not be reached.
 
 ## Fatal error on 1.0.1
 
