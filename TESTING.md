@@ -4,9 +4,17 @@ Written for anyone retesting the reported issue and the two further ones. Every
 step below was run against the branch; where a result differs from the released
 code, both are given.
 
-Lab used here: Drupal 11.3.2, PHP 8.3, SQLite, `basic_auth` and `jsonapi`
-enabled, a test user with a known password, a TOTP secret enrolled and the
-module's policy set to `required`.
+Labs used here, both with `basic_auth` and `jsonapi` enabled, a test user with
+a known password, a TOTP secret enrolled and the module's policy set to
+`required`:
+
+- Drupal 11.3.2, PHP 8.3, SQLite.
+- Drupal 10.1.7, PHP 8.1.27, MySQL 8.4.
+
+The second exists because the user-ID bug below is about what a database driver
+returns, and because the module declares support for PHP 8.1 and Drupal 10. All
+the checks in sections 1 to 5 were run on both; the browser-driven ones in
+sections 6 and 7 on the first.
 
 Two things to know before starting:
 
@@ -15,11 +23,12 @@ Two things to know before starting:
   `$configFactory` and `$requestStack` from `src/Form/WebAuthnVerifyForm.php`
   and `src/Controller/WebAuthnUserSettingsController.php`. 1.0.0 does not need
   this.
-- **On database drivers that return a user ID as a string, such as SQLite,
-  logging in through the login form ends in a 500** on both released versions.
-  MySQL returns an integer and is unaffected. If you are on SQLite and want to
-  reach the released behaviour through the form, cast the value in
-  `webauthn_user_login_submit()`.
+- **On 1.0.1, logging in through the login form ends in a 500 on any database
+  driver**, because that release added `declare(strict_types=1)` and an `int`
+  parameter type in the same commit, while the value passed is the string
+  `User::id()` returns. Confirmed on SQLite and on MySQL 8.4. 1.0.0 is not
+  affected. To reach 1.0.1's intended behaviour through the form, cast the value
+  in `webauthn_user_login_submit()`.
 
 ## 1. The reported issue: no attempt limiting
 
@@ -192,9 +201,9 @@ expected to fail now. They are not regressions:
 
 Being explicit so nobody assumes more coverage than exists:
 
-- PHP 8.1. The branch declares support for it and nobody has run it there.
-- MySQL. The user-ID fix makes the code independent of what the driver returns,
-  but the branch has only been exercised on SQLite.
+- Real hardware keys. Tested with Chrome's virtual authenticator only.
+- Nothing driver-specific remains untested: the branch has now been exercised on
+  SQLite (Drupal 11.3, PHP 8.3) and on MySQL 8.4 (Drupal 10.1, PHP 8.1).
 - Masquerade and specific SSO modules, which are documented above rather than
   handled.
 - There are no automated tests in the module yet.
