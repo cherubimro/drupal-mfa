@@ -115,7 +115,14 @@ Complete the login and verification, then see where the browser goes.
   cross-site redirect. `javascript:alert(1)` and `data:` URLs **do** reach it:
   verified on Drupal 10.1 that the value is stored in the session and returned
   as the verification response's `redirect`, which the module's JavaScript then
-  follows with `window.location.href`, running in the site's origin.
+  follows with `window.location.href` (`js/webauthn.js` line 326).
+
+  Whether a browser acts on that was measured separately, with a page whose own
+  script performs the same assignment: `javascript:` runs, in the page's own
+  origin, in both Chrome 151 and Firefox 140 ESR; `data:` is refused by both,
+  because top-level navigation to it is blocked. Assigning `javascript:` from a
+  browser's debug console is also refused, so a test that drives the assignment
+  from DevTools instead of from page script reports a false negative.
 - **Released (1.0.1):** unreachable, because the login form fails with a 500
   before a destination is stored.
 - **Fixed:** both are discarded and the user lands on their account page. The

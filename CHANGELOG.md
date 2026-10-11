@@ -26,9 +26,11 @@ stop working because they depended on the second factor being skipped.
   `destination` parameter and was followed by client-side JavaScript, which
   bypasses Drupal's own redirect checks. Core removes destinations it considers
   external, so sending the user to another site was not possible — but
-  `UrlHelper::isExternal()` does not treat `javascript:` or `data:` as external,
-  so those passed core's filter, were stored by the module and then ran in the
-  site's origin. Destinations are now accepted only if they are local paths.
+  `UrlHelper::isExternal()` does not treat `javascript:` as external, so such a
+  destination passed core's filter, was stored by the module and then ran in the
+  site's origin. `data:` passed the same filter but was inert, because browsers
+  no longer navigate to it at the top level. Destinations are now accepted only
+  if they are local paths.
   Exploitable on 1.0.0; on 1.0.1 the login form fails before a destination is
   stored, so it could not be reached there.
 

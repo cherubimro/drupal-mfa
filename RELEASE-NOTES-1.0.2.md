@@ -32,9 +32,11 @@ login.** The page shown after verification was taken from the login URL's
 `destination` parameter and followed by JavaScript, which bypasses Drupal's own
 redirect checks. Drupal removes destinations it considers external, so this
 could not send a user to a different site — but it does not treat `javascript:`
-or `data:` as external, so a link carrying one of those reached the module and
-ran in your site's context immediately after the user signed in. Destinations
-are now accepted only if they are paths on this site. This affected 1.0.0; on
+as external, so a link carrying one reached the module and ran in your site's
+context immediately after the user signed in. `data:` destinations passed
+Drupal's filter in the same way, but current browsers refuse to navigate to
+them, so those were inert. Destinations are now accepted only if they are paths
+on this site. This affected 1.0.0; on
 1.0.1 the login form fails earlier, so it could not be reached.
 
 ## Fatal error on 1.0.1
