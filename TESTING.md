@@ -120,9 +120,10 @@ Complete the login and verification, then see where the browser goes.
   Whether a browser acts on that was measured separately, with a page whose own
   script performs the same assignment: `javascript:` runs, in the page's own
   origin, in both Chrome 151 and Firefox 140 ESR; `data:` is refused by both,
-  because top-level navigation to it is blocked. Assigning `javascript:` from a
-  browser's debug console is also refused, so a test that drives the assignment
-  from DevTools instead of from page script reports a false negative.
+  because top-level navigation to it is blocked. One trap worth recording:
+  Chrome refuses the same assignment when it is driven from its DevTools
+  evaluation context, so a test written that way reports a false negative even
+  though page script succeeds. Firefox ran it either way.
 - **Released (1.0.1):** unreachable, because the login form fails with a 500
   before a destination is stored.
 - **Fixed:** both are discarded and the user lands on their account page. The
