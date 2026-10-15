@@ -82,6 +82,10 @@ stop working because they depended on the second factor being skipped.
   provider is not allowed on the route, still had its error page rendered in
   the account's context. His diagnosis of why was correct and is what the fix
   is built on.
+- **cilefen** — triaged the report for the Drupal Security Team, and kept the
+  handling on the right process: that the core findings belonged in a separate
+  report rather than in this one, and that this should be an ordinary release
+  rather than one marked as a security release.
 - **nicrodgers** — reported the fatal error on load and opened the merge request
   for it.
 - **vinodhini.e** — tested and confirmed the fix for the fatal error.

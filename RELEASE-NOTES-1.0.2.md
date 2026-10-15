@@ -197,6 +197,9 @@ requirement for that user until they enrol again.
   as much as mine. He also retested the fix thoroughly and found one more case
   that is fixed here, where an error page for a request that could not supply a
   second factor was still rendered in the account's context.
+- **cilefen** triaged the report for the Drupal Security Team and kept the
+  handling on the right process, including that the core findings belonged in a
+  separate report and that this should be an ordinary release.
 - **nicrodgers** reported the fatal error on load and opened a merge request for
   it.
 - **vinodhini.e** tested and confirmed that fix.
