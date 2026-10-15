@@ -50,11 +50,14 @@ could not finish signing in and nobody could enrol. This is fixed.
 Reported by nicrodgers, tested by vinodhini.e, reviewed by florent jousseaume
 (issue 3582203).
 
-A second fatal error is also fixed: on database drivers that return a user ID as
-a string rather than an integer, logging in through the login form ended in a 500
-before the second factor was considered. SQLite is affected; MySQL is not,
-because it returns an integer, which is why this was not noticed earlier. Both
-1.0.0 and 1.0.1 are affected.
+A second fatal error is also fixed: the login form's submit handler passed the
+user ID to a method typed for `int` under `strict_types`, while Drupal returns
+that value as a string, so logging in ended in a 500 before the second factor
+was considered. **This affects 1.0.1 only, on every database driver** —
+confirmed on SQLite and on MySQL 8.4, which returns the ID as a string as well.
+1.0.0 declares neither `strict_types` nor the parameter type, so the value was
+coerced silently there. Together with the error above, this means 1.0.1 could
+not complete a login through the login form at all.
 
 ## Your existing security keys and authenticator apps keep working
 

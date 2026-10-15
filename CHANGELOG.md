@@ -40,13 +40,14 @@ stop working because they depended on the second factor being skipped.
   defined`), caused by redeclaring with types two properties that Drupal core
   declares untyped. The verification page and the security-keys page were
   unreachable on every supported core version.
-- A fatal error when logging in through the login form, on database drivers
-  where a user ID is returned as a string rather than an integer. The login
-  submit handler passed that value to a method typed for `int` under
-  `strict_types`, so the request ended in a 500 before any second factor was
-  considered. Reproduced on SQLite; MySQL returns an integer, so sites on MySQL
-  were unaffected, which is why this went unnoticed. Present in 1.0.0 and
-  1.0.1.
+- A fatal error when logging in through the login form. The submit handler
+  passed the user ID to a method typed for `int` under `strict_types`, while
+  Drupal returns that value as a string, so the request ended in a 500 before
+  any second factor was considered. **Present in 1.0.1 only, on every database
+  driver** — confirmed on SQLite and on MySQL 8.4, which returns the ID as a
+  string as well. 1.0.0 declares neither `strict_types` nor the parameter type,
+  so the value was coerced silently there. In practice 1.0.1 could not complete
+  a login through the login form at all.
 - Error pages, blocks and the toolbar are no longer rendered in the user's
   context while verification is pending, and such pages are not served from the
   dynamic page cache.
